@@ -3,67 +3,102 @@ githubCopilot:
   cloudAgent: true
 
 context: |
-  This context only settles choices it leaves open.
-  Backend is Go. Frontend is React with TypeScript. Bun is the frontend toolchain for install, scripts, tests, and the Compose image.
-  Docker Compose runs both services. The browser calls the Go API. The UI API base URL comes from an environment variable.
-  No separate database. The Go service keeps users in process memory or one local file.
+  Precedence when the readme disagrees with itself:
+  The numbered requirements and the acceptance criteria are the product:
+  registration with validation, a usable JWT, the protected welcome sentence,
+  logout after 15 minutes of inactivity, and a user can see their money and transfer it.
+  The delivery section makes a runnable project, a README, Docker Compose, and the environment variables mandatory.
+  The opening line makes the API Go.
+  The protected view is an HTTP route. No frontend is in scope.
+  Bonus items that repeat Go or Docker Compose are already required.
+  Tests are the proof method for those requirements, not a separate feature.
+  The closing line that names only registration, login, and the welcome sentence does not remove the wallet.
+  This context closes the choices those rules leave open.
+  Docker Compose runs the Go API and Postgres.
+  Postgres is the store for users, wallets, and transfers. A volume keeps the database across restarts.
+  The caller is on a bad link. The API uses finite deadlines so a stuck call ends.
+  A transfer is safe to retry: the caller repeats the same transfer id, and the API does not move money again.
   Registration validation is only: email, password, and confirmPassword are required;
   email is a valid address; password is non-empty; confirmPassword matches password;
   a duplicate email is rejected.
+  Registration creates the user and a wallet in one database transaction.
+  The new wallet starts at 1000.00, stored as 100000 minor units.
+  Money is one currency. Amounts are integer minor units. The README states that those units are two decimal places.
+  Passwords are stored only as a one-way hash.
   Login returns a signed JWT whose claims include email and a stable user id.
-  The signing secret comes from an environment variable. Store passwords only as a one-way hash.
-  The protected React screen shows exactly: Hello [email], welcome back
-  Inactivity is 15 minutes since the last successful authenticated request.
-  Continued activity keeps the session. After 15 idle minutes the screen ends the session
-  and the Go endpoint rejects the next request.
+  The signing secret comes from an environment variable.
+  The JWT lifetime is longer than 15 minutes. The idle clock, not the JWT expiry, logs the user out.
+  The design names the JWT lifetime.
+  The protected route returns exactly: Hello [email], welcome back
+  Inactivity is 15 minutes since the last successful login or the last successful authenticated request, including wallet reads and transfers.
+  A failed or timed-out call leaves the idle clock unchanged.
+  Continued successful activity keeps the session.
+  The Go endpoint rejects the next authenticated request after 15 idle minutes and does not move the clock on that rejection.
+  A signed-in user can read their balance and their own sent and received transfers, including notes.
+  A transfer takes the recipient's email, a positive amount, notes, and a caller-generated transfer id.
+  Notes may be empty and are at most 200 characters.
+  The server rejects an unknown recipient, a transfer to oneself, a zero or negative amount, and an amount above the sender's balance.
+  The balance check, the debit, and the credit commit in one database transaction, so two transfers cannot overdraw the same wallet.
+  The transfer id belongs to the authenticated sender. Repeating it with the same recipient, amount, and notes returns the original result and does not move money again.
+  The same id with a different recipient, amount, or notes is rejected.
   The project README documents the Compose run path and every required environment variable.
-  Go tests cover registration validation, JWT claims, the protected identity, and idle rejection with a fake clock.
-  A frontend test covers the exact welcome sentence.
-  Out of scope: a TypeScript or C# backend, a Node npm pnpm or yarn frontend toolchain, OAuth, MFA, email verification, password reset, profile editing, roles, and a standalone database.
-  Planning artifacts describe the finished app as a greenfield build.
-  When those artifacts or the implemented app are revised, rewrite the affected plan in place as the complete target and leave every task unchecked.
-  The next apply creates the Go API, the Bun React app, and Compose again from those artifacts.
-  Apply replaces app code that disagrees with the artifacts. Apply leaves openspec/ and this config in place.
+  Go tests cover registration validation, JWT claims, the protected welcome sentence, idle rejection with a fake clock,
+  a successful transfer that changes both balances, insufficient funds, an unknown recipient, a self-transfer,
+  and an idempotent retry.
+  Out of scope: a frontend of any kind, including Flutter, web, React, and React Native;
+  a TypeScript or C# backend, a Node npm pnpm or yarn toolchain, Bun,
+  OAuth, MFA, email verification, password reset, profile editing, roles, deposits, withdrawals,
+  other currencies, payment gateways, and an offline queue that applies transfers later.
+  Planning artifacts describe the finished API as a greenfield build.
+  When those artifacts or the implemented API are revised, rewrite the affected plan in place as the complete target and leave every task unchecked.
+  The next apply creates the Go API, Postgres, and Compose again from those artifacts.
+  Apply replaces API code that disagrees with the artifacts. Apply leaves openspec/ and this config in place.
 
 rules:
   proposal:
-    - Keep scope to user-registration and jwt-session
-    - Include the Go API, the React TypeScript screen, Bun, Compose, idle logout, the exact welcome sentence, and the tests named in context
+    - Keep scope to user-registration, jwt-session, and wallet
+    - Include the Go API, Compose with Postgres, the idle clock, the exact welcome sentence from the protected route, wallet balance and transfer, and the tests named in context
+    - State that no frontend is in scope
     - List the context out-of-scope items as out of scope
     - Write the proposal as the full greenfield target
     - On revision, replace it in place so it still describes the whole system
   specs:
     - user-registration owns field validation and duplicate email only
-    - jwt-session owns login, JWT claims, idle logout, and the protected React greeting
-    - Cover each validation failure, the login claims, the exact welcome sentence on the screen, a session that stays valid with continued activity, and rejection after 15 idle minutes
-    - Leave out scenarios for out-of-scope features
+    - jwt-session owns login, JWT claims, the idle clock, and the protected route's welcome sentence
+    - wallet owns the opening balance, reading one's balance and transfer history, and sending money under the context transfer rules
+    - Cover each validation failure, the login claims, the exact welcome sentence from the protected route, a session that stays valid with continued activity, server rejection after 15 idle minutes that leaves the clock unchanged, a transfer that updates both balances once, insufficient funds, an unknown recipient, a self-transfer, empty notes, and a repeated transfer id
+    - Leave out scenarios for a frontend and for other out-of-scope features
     - On revision, replace the affected requirements so the specs remain the full contract for a from-scratch build
   design:
-    - Choose one server-enforced idle mechanism and record how an active user stays signed in
-    - Name how the React screen hears about idle expiry and clears the session
-    - Name the environment variables and how Compose supplies them to the Go API and the Bun frontend
-    - Keep persistence to process memory or a single local file
-    - Repeat the context non-goals
-    - On revision, update the decisions in place so one design can rebuild the whole app
+    - Record the context idle clock: last successful login or authenticated request, and server rejection that does not move the clock
+    - Record that the JWT lifetime is longer than 15 minutes and name that lifetime
+    - Name the environment variables and how Compose supplies them to the Go API and Postgres
+    - Record users, wallets, and transfers in Postgres, integer minor units, and the single transaction that checks the balance, debits, and credits
+    - Record finite API deadlines and transfer-id idempotency
+    - Repeat the context non-goals, including that no frontend is built
+    - On revision, update the decisions in place so one design can rebuild the whole API
   tasks:
     - Write every task as a from-scratch creation step that names the files and end state to produce
-    - Do not write tasks as patches against existing app code
-    - Include the Go service, the Bun React app, Compose, an env example, README run instructions, Go tests with a fake clock, and a frontend test for the welcome sentence
-    - Map task groups to user-registration and jwt-session
-    - Leave out tasks for out-of-scope features
-    - When the plan or the implemented app is revised, replace the task list with the full from-scratch plan and leave every task unchecked
+    - Do not write tasks as patches against existing API code
+    - Include the Go service, Compose with Postgres, an env example, README run instructions for Compose, and Go tests with a fake clock, the welcome sentence, and the wallet cases
+    - Map task groups to user-registration, jwt-session, and wallet
+    - Leave out tasks for a frontend and for other out-of-scope features
+    - When the plan or the implemented API is revised, replace the task list with the full from-scratch plan and leave every task unchecked
 
 operations:
   apply:
     guidance:
-      - When the app code or the planning artifacts were revised, regenerate tasks.md as an unchecked from-scratch plan derived from the current proposal, specs, and design, then implement that plan
-      - Create the Go API, the Bun React app, and Compose to match the artifacts
-      - Replace drifted app files that disagree with the artifacts
+      - When the API code or the planning artifacts were revised, regenerate tasks.md as an unchecked from-scratch plan derived from the current proposal, specs, and design, then implement that plan
+      - Create the Go API, Postgres, and Compose to match the artifacts
+      - Replace drifted API files that disagree with the artifacts
       - Leave openspec/ and this config in place
       - Do not paste this config into planning artifacts or implementation files
-      - Use Go for the API and Bun for frontend install, scripts, and tests
+      - Use Go for the API
+      - Do not add a frontend
       - Prove idle logout with a controllable clock
-      - Make the README list the environment variables the app actually reads
+      - Prove the protected route returns the exact welcome sentence
+      - Prove a transfer changes both balances once and a repeated transfer id does not move money again
+      - Make the README list the environment variables the API actually reads
   archive:
     guidance:
-      - Archive only after registration validation, a usable JWT, the exact welcome sentence on the React screen, and idle logout have been demonstrated
+      - Archive only after registration validation, a usable JWT, the exact welcome sentence from the protected route, idle logout, a transfer that changes both balances, and Compose running Postgres have been demonstrated

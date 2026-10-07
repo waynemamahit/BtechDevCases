@@ -1,6 +1,6 @@
-# Take-home Assignment: Auth with JWT (TypeScript)
+# Take-home Assignment: Auth with JWT
 
-Build a small application in **TypeScript/Go/C#** that supports user **registration** and **login** using **JWT**.
+Build a small application in **Go** that supports user **registration**, **login** using **JWT** and wallet management.
 You can choose any stack or structure you want.
 As long as the core flow works end-to-end, it’s accepted.
 Please note User will be using the app in place with very bad connections, like jungle or caves.
@@ -61,7 +61,6 @@ fields are: recipient, amount, and notes
 
 - Docker
 - Backend built using Go (or their frameworks)
-- Frontend built using React/Vue (or their frameworks)
 - Tests (unit or integration)
 
 This keeps the scope tight: just registration, login, and a protected “Hello [email]” flow.
