@@ -1,0 +1,8 @@
+# OpenSpec
+**/openspec-*/*.md
+**/openspec.*.md
+**/opsx-*.md
+**/opsx-*.toml
+**/opsx-*.prompt
+**/commands/opsx/*.md
+**/commands/opsx/*.toml
