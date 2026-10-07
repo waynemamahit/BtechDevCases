@@ -14,13 +14,15 @@ context: |
   Tests are the proof method for those requirements, not a separate feature.
   The closing line that names only registration, login, and the welcome sentence does not remove the wallet.
   This context closes the choices those rules leave open.
-  Docker Compose runs the Go API and Postgres.
-  Postgres is the store for users, wallets, and transfers. A volume keeps the database across restarts.
-  The caller is on a bad link. The API uses finite deadlines so a stuck call ends.
-  A transfer is safe to retry: the caller repeats the same transfer id, and the API does not move money again.
+  Docker Compose runs the Go API, and MySQL 8. The browser calls the Go API. The UI API base URL comes from an environment variable.
+  Users live in MySQL. The Go service talks to MySQL only through sqlc-generated code.
+  Queries are checked-in SQL, and the generated Go package is committed.
+  Compose runs MySQL with a named volume and a healthcheck. The API starts only after MySQL is healthy.
+  The same SQL file is what sqlc compiles and what Compose applies when the MySQL data volume is first created.
+  The database DSN and MySQL credentials come from environment variables.
   Registration validation is only: email, password, and confirmPassword are required;
   email is a valid address; password is non-empty; confirmPassword matches password;
-  a duplicate email is rejected.
+  a duplicate email is rejected by a MySQL unique key.
   Registration creates the user and a wallet in one database transaction.
   The new wallet starts at 1000.00, stored as 100000 minor units.
   Money is one currency. Amounts are integer minor units. The README states that those units are two decimal places.
@@ -41,23 +43,24 @@ context: |
   The balance check, the debit, and the credit commit in one database transaction, so two transfers cannot overdraw the same wallet.
   The transfer id belongs to the authenticated sender. Repeating it with the same recipient, amount, and notes returns the original result and does not move money again.
   The same id with a different recipient, amount, or notes is rejected.
-  The project README documents the Compose run path and every required environment variable.
+  The project README documents the Compose run path and every required environment variable, including the MySQL credentials and the DSN.
   Go tests cover registration validation, JWT claims, the protected welcome sentence, idle rejection with a fake clock,
   a successful transfer that changes both balances, insufficient funds, an unknown recipient, a self-transfer,
   and an idempotent retry.
+  Duplicate-email rejection is proven against MySQL.
   Out of scope: a frontend of any kind, including Flutter, web, React, and React Native;
   a TypeScript or C# backend, a Node npm pnpm or yarn toolchain, Bun,
   OAuth, MFA, email verification, password reset, profile editing, roles, deposits, withdrawals,
   other currencies, payment gateways, and an offline queue that applies transfers later.
   Planning artifacts describe the finished API as a greenfield build.
   When those artifacts or the implemented API are revised, rewrite the affected plan in place as the complete target and leave every task unchecked.
-  The next apply creates the Go API, Postgres, and Compose again from those artifacts.
+  The next apply creates the Go API, MySQL, and Compose again from those artifacts.
   Apply replaces API code that disagrees with the artifacts. Apply leaves openspec/ and this config in place.
 
 rules:
   proposal:
     - Keep scope to user-registration, jwt-session, and wallet
-    - Include the Go API, Compose with Postgres, the idle clock, the exact welcome sentence from the protected route, wallet balance and transfer, and the tests named in context
+    - Include the Go API, Compose with MySQL, the idle clock, the exact welcome sentence from the protected route, wallet balance and transfer, and the tests named in context
     - State that no frontend is in scope
     - List the context out-of-scope items as out of scope
     - Write the proposal as the full greenfield target
@@ -70,17 +73,17 @@ rules:
     - Leave out scenarios for a frontend and for other out-of-scope features
     - On revision, replace the affected requirements so the specs remain the full contract for a from-scratch build
   design:
-    - Record the context idle clock: last successful login or authenticated request, and server rejection that does not move the clock
+    - "Record the context idle clock: last successful login or authenticated request, and server rejection that does not move the clock"
     - Record that the JWT lifetime is longer than 15 minutes and name that lifetime
-    - Name the environment variables and how Compose supplies them to the Go API and Postgres
-    - Record users, wallets, and transfers in Postgres, integer minor units, and the single transaction that checks the balance, debits, and credits
+    - Name the environment variables and how Compose supplies them to the Go API and MySQL
+    - Record users, wallets, and transfers in MySQL, integer minor units, and the single transaction that checks the balance, debits, and credits
     - Record finite API deadlines and transfer-id idempotency
     - Repeat the context non-goals, including that no frontend is built
     - On revision, update the decisions in place so one design can rebuild the whole API
   tasks:
     - Write every task as a from-scratch creation step that names the files and end state to produce
     - Do not write tasks as patches against existing API code
-    - Include the Go service, Compose with Postgres, an env example, README run instructions for Compose, and Go tests with a fake clock, the welcome sentence, and the wallet cases
+    - Include the Go service, Compose running MySQL 8, sqlc over the checked-in schema and queries with the generated Go package committed, an env example, README run instructions for Compose, and Go tests with a fake clock, the welcome sentence, and the wallet cases
     - Map task groups to user-registration, jwt-session, and wallet
     - Leave out tasks for a frontend and for other out-of-scope features
     - When the plan or the implemented API is revised, replace the task list with the full from-scratch plan and leave every task unchecked
@@ -89,7 +92,7 @@ operations:
   apply:
     guidance:
       - When the API code or the planning artifacts were revised, regenerate tasks.md as an unchecked from-scratch plan derived from the current proposal, specs, and design, then implement that plan
-      - Create the Go API, Postgres, and Compose to match the artifacts
+      - Create the Go API with MySQL access only through sqlc, and Compose so MySQL 8 has a named volume and healthcheck and the API waits until MySQL is healthy
       - Replace drifted API files that disagree with the artifacts
       - Leave openspec/ and this config in place
       - Do not paste this config into planning artifacts or implementation files
@@ -101,4 +104,4 @@ operations:
       - Make the README list the environment variables the API actually reads
   archive:
     guidance:
-      - Archive only after registration validation, a usable JWT, the exact welcome sentence from the protected route, idle logout, a transfer that changes both balances, and Compose running Postgres have been demonstrated
+      - Archive only after registration validation, a usable JWT, the exact welcome sentence from the protected route, idle logout, a transfer that changes both balances, and Compose running MySQL have been demonstrated

@@ -1,3 +1,8 @@
+# App
+node_modules/
+dist/
+.env
+
 # OpenSpec
 **/openspec-*/*.md
 **/openspec.*.md
