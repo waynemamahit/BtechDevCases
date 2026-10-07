@@ -5,50 +5,63 @@ githubCopilot:
 context: |
   This context only settles choices it leaves open.
   Backend is Go. Frontend is React with TypeScript. Bun is the frontend toolchain for install, scripts, tests, and the Compose image.
-  Docker Compose runs both services. The browser calls the Go API. The UI API base URL comes from an environment variable.
-  No separate database. The Go service keeps users in process memory or one local file.
+  Frontend formatting and linting is Biome, installed and run with Bun. A checked-in Biome config formats and lints the React TypeScript sources, including tests. The frontend passes Biome check. Biome covers the frontend only.
+  Frontend styling is Tailwind CSS 4 with daisyUI 5, installed with Bun. The CSS entry is @import "tailwindcss" and @plugin "daisyui".
+  Register, login, and the welcome screen stay usable from a narrow phone width through tablet and desktop.
+  Flex and grid layouts carry responsive prefixes. Components and colors come from daisyUI. Tailwind utilities fill gaps daisyUI does not cover.
+  Docker Compose runs the Bun frontend, the Go API, and MySQL 8. The browser calls the Go API. The UI API base URL comes from an environment variable.
+  Users live in MySQL. The Go service talks to MySQL only through sqlc-generated code.
+  Queries are checked-in SQL, and the generated Go package is committed.
+  Compose runs MySQL with a named volume and a healthcheck. The API starts only after MySQL is healthy.
+  The same SQL file is what sqlc compiles and what Compose applies when the MySQL data volume is first created.
+  The database DSN and MySQL credentials come from environment variables.
   Registration validation is only: email, password, and confirmPassword are required;
   email is a valid address; password is non-empty; confirmPassword matches password;
-  a duplicate email is rejected.
+  a duplicate email is rejected by a MySQL unique key.
   Login returns a signed JWT whose claims include email and a stable user id.
   The signing secret comes from an environment variable. Store passwords only as a one-way hash.
   The protected React screen shows exactly: Hello [email], welcome back
   Inactivity is 15 minutes since the last successful authenticated request.
   Continued activity keeps the session. After 15 idle minutes the screen ends the session
   and the Go endpoint rejects the next request.
-  The project README documents the Compose run path and every required environment variable.
+  The project README documents the Compose run path and every required environment variable, including the MySQL credentials and the DSN.
   Go tests cover registration validation, JWT claims, the protected identity, and idle rejection with a fake clock.
+  Duplicate-email rejection is proven against MySQL.
   A frontend test covers the exact welcome sentence.
-  Out of scope: a TypeScript or C# backend, a Node npm pnpm or yarn frontend toolchain, OAuth, MFA, email verification, password reset, profile editing, roles, and a standalone database.
+  Out of scope: a TypeScript or C# backend, a Node npm pnpm or yarn frontend toolchain, ESLint, Prettier, OAuth, MFA, email verification, password reset, profile editing, roles, an ORM, Postgres or SQLite, and a CSS system other than Tailwind CSS with daisyUI.
   Planning artifacts describe the finished app as a greenfield build.
   When those artifacts or the implemented app are revised, rewrite the affected plan in place as the complete target and leave every task unchecked.
-  The next apply creates the Go API, the Bun React app, and Compose again from those artifacts.
+  The next apply creates the Go API, the Bun React app, MySQL, and Compose again from those artifacts.
   Apply replaces app code that disagrees with the artifacts. Apply leaves openspec/ and this config in place.
 
 rules:
   proposal:
     - Keep scope to user-registration and jwt-session
-    - Include the Go API, the React TypeScript screen, Bun, Compose, idle logout, the exact welcome sentence, and the tests named in context
+    - Include the Go API, the React TypeScript screen, Bun, Biome, Tailwind CSS 4, daisyUI 5, responsive layouts, Compose, MySQL, sqlc, idle logout, the exact welcome sentence, and the tests named in context
     - List the context out-of-scope items as out of scope
     - Write the proposal as the full greenfield target
     - On revision, replace it in place so it still describes the whole system
   specs:
     - user-registration owns field validation and duplicate email only
+    - Duplicate-email rejection is the MySQL unique key
     - jwt-session owns login, JWT claims, idle logout, and the protected React greeting
+    - The React screens for registration, login, and the greeting use Tailwind CSS 4 and daisyUI 5 and stay usable from a narrow phone width through desktop
     - Cover each validation failure, the login claims, the exact welcome sentence on the screen, a session that stays valid with continued activity, and rejection after 15 idle minutes
     - Leave out scenarios for out-of-scope features
     - On revision, replace the affected requirements so the specs remain the full contract for a from-scratch build
   design:
     - Choose one server-enforced idle mechanism and record how an active user stays signed in
     - Name how the React screen hears about idle expiry and clears the session
-    - Name the environment variables and how Compose supplies them to the Go API and the Bun frontend
-    - Keep persistence to process memory or a single local file
+    - Name the environment variables, including the database DSN and MySQL credentials, and how Compose supplies them to the Go API, the Bun frontend, and the MySQL service
+    - Persist users in MySQL through sqlc. Name the checked-in SQL file, that Compose applies it when the data volume is first created, and that the API waits until MySQL is healthy
+    - Style the React screens with Tailwind CSS 4 and daisyUI 5. Record that register, login, and the welcome screen stay usable from a narrow phone width through tablet and desktop
+    - Format and lint the frontend with Biome through Bun. Name the checked-in Biome config and the Bun scripts that check the React TypeScript sources and write fixes
     - Repeat the context non-goals
     - On revision, update the decisions in place so one design can rebuild the whole app
   tasks:
     - Write every task as a from-scratch creation step that names the files and end state to produce
     - Do not write tasks as patches against existing app code
-    - Include the Go service, the Bun React app, Compose, an env example, README run instructions, Go tests with a fake clock, and a frontend test for the welcome sentence
+    - Include the Go service, sqlc SQL and generated Go, the MySQL Compose service and init SQL, the Bun React app with Tailwind CSS 4 and daisyUI 5 responsive screens, a Biome config and Bun scripts so the React TypeScript sources pass Biome check, Compose, an env example, README run instructions, Go tests with a fake clock, a MySQL proof of duplicate-email rejection, and a frontend test for the welcome sentence
     - Map task groups to user-registration and jwt-session
     - Leave out tasks for out-of-scope features
     - When the plan or the implemented app is revised, replace the task list with the full from-scratch plan and leave every task unchecked
@@ -57,13 +70,17 @@ operations:
   apply:
     guidance:
       - When the app code or the planning artifacts were revised, regenerate tasks.md as an unchecked from-scratch plan derived from the current proposal, specs, and design, then implement that plan
-      - Create the Go API, the Bun React app, and Compose to match the artifacts
+      - Create the Go API, the Bun React app, MySQL, and Compose to match the artifacts
       - Replace drifted app files that disagree with the artifacts
       - Leave openspec/ and this config in place
       - Do not paste this config into planning artifacts or implementation files
-      - Use Go for the API and Bun for frontend install, scripts, and tests
+      - Use Go for the API, sqlc for MySQL access, and Bun for frontend install, scripts, and tests
+      - Format and lint the frontend with Biome through Bun. The React TypeScript sources, including tests, pass Biome check
+      - Style screens with Tailwind CSS 4 and daisyUI 5 so they stay usable from a narrow phone width through desktop
+      - Run MySQL in Compose and apply the checked-in SQL when the data volume is first created
+      - Prove duplicate-email rejection against MySQL
       - Prove idle logout with a controllable clock
-      - Make the README list the environment variables the app actually reads
+      - Make the README list the environment variables the app actually reads, including the MySQL credentials and the DSN
   archive:
     guidance:
-      - Archive only after registration validation, a usable JWT, the exact welcome sentence on the React screen, and idle logout have been demonstrated
+      - Archive only after registration validation, a usable JWT, the exact welcome sentence on the React screen, idle logout, users stored in MySQL, screens usable from a narrow phone width through desktop, and a frontend that passes Biome check have been demonstrated
