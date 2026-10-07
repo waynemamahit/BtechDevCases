@@ -1,6 +1,6 @@
-# Take-home Assignment: Auth with JWT (TypeScript)
+# Take-home Assignment: Auth with JWT
 
-Build a small application in **TypeScript/Go/C#** that supports user **registration**, **login** using **JWT** and wallet management.
+Build a small application in **Go/Flutter** that supports user **registration**, **login** using **JWT** and wallet management.
 You can choose any stack or structure you want.
 As long as the core flow works end-to-end, it’s accepted.
 Please note User will be using the app in place with very bad connections, like jungle or caves.

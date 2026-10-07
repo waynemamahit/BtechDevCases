@@ -3,53 +3,81 @@ githubCopilot:
   cloudAgent: true
 
 context: |
-  This context only settles choices it leaves open.
-  Backend is Go. Frontend is React with TypeScript. Bun is the frontend toolchain for install, scripts, tests, and the Compose image.
-  Docker Compose runs both services. The browser calls the Go API. The UI API base URL comes from an environment variable.
-  No separate database. The Go service keeps users in process memory or one local file.
+  This context settles choices the assignment leaves open.
+  The product is the readme acceptance list and the delivery section:
+  registration with validation, a usable JWT, the protected welcome sentence,
+  logout after 15 minutes of inactivity, a user can see their money and transfer it,
+  and Docker Compose runs a database.
+  This context wins where the readme's closing summary describes a smaller product.
+  Backend is Go. Frontend is Flutter with Dart. The Flutter SDK is the toolchain for run, test, and build.
+  Docker Compose runs the Go API and Postgres. The Flutter app runs on a device or emulator and calls the Go API.
+  The API base URL is supplied to the Flutter app through its configuration.
+  Android is the documented run path. The README explains how that device reaches the Compose API.
+  Postgres is the store for users, wallets, and transfers. A volume keeps the database across restarts.
+  The user is on a bad link. Calls use finite timeouts. A lost or failed response is shown as a failure.
+  The client retries a transfer by repeating the same transfer id.
   Registration validation is only: email, password, and confirmPassword are required;
   email is a valid address; password is non-empty; confirmPassword matches password;
   a duplicate email is rejected.
+  Registration creates the user and a wallet in one database transaction.
+  The new wallet starts at 1000.00, stored as 100000 minor units.
+  Money is one currency. Amounts are integer minor units. The UI shows two decimal places.
+  Passwords are stored only as a one-way hash.
   Login returns a signed JWT whose claims include email and a stable user id.
-  The signing secret comes from an environment variable. Store passwords only as a one-way hash.
-  The protected React screen shows exactly: Hello [email], welcome back
-  Inactivity is 15 minutes since the last successful authenticated request.
-  Continued activity keeps the session. After 15 idle minutes the screen ends the session
-  and the Go endpoint rejects the next request.
-  The project README documents the Compose run path and every required environment variable.
-  Go tests cover registration validation, JWT claims, the protected identity, and idle rejection with a fake clock.
-  A frontend test covers the exact welcome sentence.
-  Out of scope: a TypeScript or C# backend, a Node npm pnpm or yarn frontend toolchain, OAuth, MFA, email verification, password reset, profile editing, roles, and a standalone database.
+  The signing secret comes from an environment variable.
+  The protected Flutter screen shows exactly: Hello [email], welcome back
+  Inactivity is 15 minutes since the last successful authenticated request, including wallet reads and transfers.
+  A failed or timed-out call leaves the idle clock unchanged.
+  The Flutter app stores the time of the last successful authenticated request.
+  Continued successful activity keeps the session. After 15 idle minutes the screen ends the session
+  on resume even when the API cannot be reached, and the Go endpoint rejects the next request.
+  A signed-in user can read their balance and their own sent and received transfers, including notes.
+  A transfer takes the recipient's email, a positive amount, notes, and a client-generated transfer id.
+  Notes may be empty and are at most 200 characters.
+  The server rejects an unknown recipient, a transfer to oneself, a zero or negative amount, and an amount above the sender's balance.
+  The balance check, the debit, and the credit commit in one database transaction, so two transfers cannot overdraw the same wallet.
+  The transfer id belongs to the authenticated sender. Repeating it with the same recipient, amount, and notes returns the original result and does not move money again.
+  The same id with a different recipient, amount, or notes is rejected.
+  The project README documents the Compose run path, the Flutter Android run path, and every required environment variable.
+  Go tests cover registration validation, JWT claims, the protected identity, idle rejection with a fake clock,
+  a successful transfer that changes both balances, insufficient funds, an unknown recipient, a self-transfer,
+  and an idempotent retry.
+  A Flutter widget test covers the exact welcome sentence.
+  Out of scope: a TypeScript or C# backend, a React or React Native frontend, a Node npm pnpm or yarn toolchain, Bun,
+  OAuth, MFA, email verification, password reset, profile editing, roles, deposits, withdrawals,
+  other currencies, payment gateways, and an offline queue that applies transfers later.
   Planning artifacts describe the finished app as a greenfield build.
   When those artifacts or the implemented app are revised, rewrite the affected plan in place as the complete target and leave every task unchecked.
-  The next apply creates the Go API, the Bun React app, and Compose again from those artifacts.
+  The next apply creates the Go API, the Flutter app, Postgres, and Compose again from those artifacts.
   Apply replaces app code that disagrees with the artifacts. Apply leaves openspec/ and this config in place.
 
 rules:
   proposal:
-    - Keep scope to user-registration and jwt-session
-    - Include the Go API, the React TypeScript screen, Bun, Compose, idle logout, the exact welcome sentence, and the tests named in context
+    - Keep scope to user-registration, jwt-session, and wallet
+    - Include the Go API, the Flutter screen, Compose with Postgres, idle logout, the exact welcome sentence, wallet balance and transfer, and the tests named in context
     - List the context out-of-scope items as out of scope
     - Write the proposal as the full greenfield target
     - On revision, replace it in place so it still describes the whole system
   specs:
     - user-registration owns field validation and duplicate email only
-    - jwt-session owns login, JWT claims, idle logout, and the protected React greeting
-    - Cover each validation failure, the login claims, the exact welcome sentence on the screen, a session that stays valid with continued activity, and rejection after 15 idle minutes
+    - jwt-session owns login, JWT claims, idle logout, and the protected Flutter greeting
+    - wallet owns the opening balance, reading one's balance and transfer history, and sending money under the context transfer rules
+    - Cover each validation failure, the login claims, the exact welcome sentence on the screen, a session that stays valid with continued activity, rejection after 15 idle minutes, a transfer that updates both balances once, insufficient funds, an unknown recipient, a self-transfer, empty notes, and a repeated transfer id
     - Leave out scenarios for out-of-scope features
     - On revision, replace the affected requirements so the specs remain the full contract for a from-scratch build
   design:
     - Choose one server-enforced idle mechanism and record how an active user stays signed in
-    - Name how the React screen hears about idle expiry and clears the session
-    - Name the environment variables and how Compose supplies them to the Go API and the Bun frontend
-    - Keep persistence to process memory or a single local file
+    - Name how the Flutter screen hears about idle expiry and clears the session, including when the app resumes and when the API cannot be reached
+    - Name the environment variables and how Compose supplies them to the Go API and Postgres, and how the Flutter app receives the API base URL
+    - Record users, wallets, and transfers in Postgres, integer minor units, and the single transaction that checks the balance, debits, and credits
+    - Record finite timeouts, visible failure, and transfer-id idempotency
     - Repeat the context non-goals
     - On revision, update the decisions in place so one design can rebuild the whole app
   tasks:
     - Write every task as a from-scratch creation step that names the files and end state to produce
     - Do not write tasks as patches against existing app code
-    - Include the Go service, the Bun React app, Compose, an env example, README run instructions, Go tests with a fake clock, and a frontend test for the welcome sentence
-    - Map task groups to user-registration and jwt-session
+    - Include the Go service, the Flutter app, Compose with Postgres, an env example, README run instructions for Compose and the Android run path, Go tests with a fake clock and the wallet cases, and a Flutter widget test for the welcome sentence
+    - Map task groups to user-registration, jwt-session, and wallet
     - Leave out tasks for out-of-scope features
     - When the plan or the implemented app is revised, replace the task list with the full from-scratch plan and leave every task unchecked
 
@@ -57,13 +85,14 @@ operations:
   apply:
     guidance:
       - When the app code or the planning artifacts were revised, regenerate tasks.md as an unchecked from-scratch plan derived from the current proposal, specs, and design, then implement that plan
-      - Create the Go API, the Bun React app, and Compose to match the artifacts
+      - Create the Go API, the Flutter app, Postgres, and Compose to match the artifacts
       - Replace drifted app files that disagree with the artifacts
       - Leave openspec/ and this config in place
       - Do not paste this config into planning artifacts or implementation files
-      - Use Go for the API and Bun for frontend install, scripts, and tests
+      - Use Go for the API and the Flutter SDK for the client
       - Prove idle logout with a controllable clock
+      - Prove a transfer changes both balances once and a repeated transfer id does not
       - Make the README list the environment variables the app actually reads
   archive:
     guidance:
-      - Archive only after registration validation, a usable JWT, the exact welcome sentence on the React screen, and idle logout have been demonstrated
+      - Archive only after registration validation, a usable JWT, the exact welcome sentence on the Flutter screen, idle logout, a transfer that changes both balances, and Compose running Postgres have been demonstrated
