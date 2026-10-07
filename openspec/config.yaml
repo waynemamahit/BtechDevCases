@@ -2,33 +2,68 @@ schema: spec-driven
 githubCopilot:
   cloudAgent: true
 
-# Project context (optional)
-# Add only constraints that should guide OpenSpec artifacts and workflows.
-# Include constraints an agent cannot infer by reading the code.
-# Keep general project documentation and discoverable codebase facts out.
-# Example:
-#   context: |
-#     Designs and tasks must cover Windows, macOS, and Linux
-#     Write all artifacts in Spanish
+context: |
+  This context only settles choices it leaves open.
+  Backend is Go. Frontend is React with TypeScript. Bun is the frontend toolchain for install, scripts, tests, and the Compose image.
+  Docker Compose runs both services. The browser calls the Go API. The UI API base URL comes from an environment variable.
+  No separate database. The Go service keeps users in process memory or one local file.
+  Registration validation is only: email, password, and confirmPassword are required;
+  email is a valid address; password is non-empty; confirmPassword matches password;
+  a duplicate email is rejected.
+  Login returns a signed JWT whose claims include email and a stable user id.
+  The signing secret comes from an environment variable. Store passwords only as a one-way hash.
+  The protected React screen shows exactly: Hello [email], welcome back
+  Inactivity is 15 minutes since the last successful authenticated request.
+  Continued activity keeps the session. After 15 idle minutes the screen ends the session
+  and the Go endpoint rejects the next request.
+  The project README documents the Compose run path and every required environment variable.
+  Go tests cover registration validation, JWT claims, the protected identity, and idle rejection with a fake clock.
+  A frontend test covers the exact welcome sentence.
+  Out of scope: a TypeScript or C# backend, a Node npm pnpm or yarn frontend toolchain, OAuth, MFA, email verification, password reset, profile editing, roles, and a standalone database.
+  Planning artifacts describe the finished app as a greenfield build.
+  When those artifacts or the implemented app are revised, rewrite the affected plan in place as the complete target and leave every task unchecked.
+  The next apply creates the Go API, the Bun React app, and Compose again from those artifacts.
+  Apply replaces app code that disagrees with the artifacts. Apply leaves openspec/ and this config in place.
 
-# Per-artifact rules (optional)
-# Add custom rules for specific artifacts.
-# Example:
-#   rules:
-#     proposal:
-#       - Keep proposals under 500 words
-#       - Always state what is out of scope
-#     tasks:
-#       - Break tasks into chunks of max 2 hours
+rules:
+  proposal:
+    - Keep scope to user-registration and jwt-session
+    - Include the Go API, the React TypeScript screen, Bun, Compose, idle logout, the exact welcome sentence, and the tests named in context
+    - List the context out-of-scope items as out of scope
+    - Write the proposal as the full greenfield target
+    - On revision, replace it in place so it still describes the whole system
+  specs:
+    - user-registration owns field validation and duplicate email only
+    - jwt-session owns login, JWT claims, idle logout, and the protected React greeting
+    - Cover each validation failure, the login claims, the exact welcome sentence on the screen, a session that stays valid with continued activity, and rejection after 15 idle minutes
+    - Leave out scenarios for out-of-scope features
+    - On revision, replace the affected requirements so the specs remain the full contract for a from-scratch build
+  design:
+    - Choose one server-enforced idle mechanism and record how an active user stays signed in
+    - Name how the React screen hears about idle expiry and clears the session
+    - Name the environment variables and how Compose supplies them to the Go API and the Bun frontend
+    - Keep persistence to process memory or a single local file
+    - Repeat the context non-goals
+    - On revision, update the decisions in place so one design can rebuild the whole app
+  tasks:
+    - Write every task as a from-scratch creation step that names the files and end state to produce
+    - Do not write tasks as patches against existing app code
+    - Include the Go service, the Bun React app, Compose, an env example, README run instructions, Go tests with a fake clock, and a frontend test for the welcome sentence
+    - Map task groups to user-registration and jwt-session
+    - Leave out tasks for out-of-scope features
+    - When the plan or the implemented app is revised, replace the task list with the full from-scratch plan and leave every task unchecked
 
-# Per-operation guidance (optional)
-# Add advisory guidance for how apply and archive work should be conducted.
-# This is separate from artifact rules above.
-# Example:
-#   operations:
-#     apply:
-#       guidance:
-#         - Keep test summaries concise
-#     archive:
-#       guidance:
-#         - Summarize the archive outcome before finishing
+operations:
+  apply:
+    guidance:
+      - When the app code or the planning artifacts were revised, regenerate tasks.md as an unchecked from-scratch plan derived from the current proposal, specs, and design, then implement that plan
+      - Create the Go API, the Bun React app, and Compose to match the artifacts
+      - Replace drifted app files that disagree with the artifacts
+      - Leave openspec/ and this config in place
+      - Do not paste this config into planning artifacts or implementation files
+      - Use Go for the API and Bun for frontend install, scripts, and tests
+      - Prove idle logout with a controllable clock
+      - Make the README list the environment variables the app actually reads
+  archive:
+    guidance:
+      - Archive only after registration validation, a usable JWT, the exact welcome sentence on the React screen, and idle logout have been demonstrated
