@@ -1,68 +1,61 @@
-# Take-home Assignment: Auth with JWT
+# Auth wallet
 
-Build a small application in **Go/Flutter** that supports user **registration**, **login** using **JWT** and wallet management.
-You can choose any stack or structure you want.
-As long as the core flow works end-to-end, it’s accepted.
-Please note User will be using the app in place with very bad connections, like jungle or caves.
+Go API and Flutter app for registration, login, a protected welcome screen, and wallet transfers. Accounts and money are stored in MySQL 8. Docker Compose runs the API and MySQL. The Flutter app runs on an Android device or emulator and calls the API.
 
----
+## Run the API
 
-## Requirements
+Copy `.env.example` to `.env` and set the variables. Then:
 
-### 1. Register
-
-- Fields: `email`, `password`, `confirmPassword`
-
-### 2. Login
-
-- Input: `email`, `password`
-- Return: **JWT**
-- Token should contain at least:
-  - `email`
-  - `user id` or similar identifier
-
-### 3. Authenticated View / Endpoint
-
-After successful login, calling the protected route / loading the protected screen should show:
-
-```
-Hello [email], welcome back
+```sh
+docker compose up --build
 ```
 
-user should be logged out after 15 minutes of inacitvity
+The API listens on http://localhost:8080. Stop the stack with `docker compose down`.
 
----
+MySQL keeps data in the named volume `mysql-data`. Compose applies `api/db/schema.sql` when that volume is first created, and the API starts only after MySQL is healthy. To apply the schema again, remove the volume:
 
-### 4. Manager wallet
+```sh
+docker compose down -v
+```
 
-User should be able to see and transfer his money to other user.
-fields are: recipient, amount, and notes
+## Run the Flutter app
 
-## What to deliver
+Install the Flutter SDK, then from `app/`:
 
-- Fork this repository and then send the link
-- A runnable project (any structure).
-- README explaining:
-  - How to build and run it (prepare docker compose)
-  - Required environment variables
+```sh
+flutter pub get
+flutter run --dart-define=API_BASE_URL=http://10.0.2.2:8080
+```
 
----
+`http://10.0.2.2:8080` is how the Android emulator reaches the API published on the host at port 8080. That URL is also the default when `API_BASE_URL` is omitted. A physical device cannot use `10.0.2.2`. Pass the computer's LAN address instead, for example `--dart-define=API_BASE_URL=http://192.168.1.20:8080`, with the phone and the computer on the same network. The API allows cleartext HTTP so this lab URL works.
 
-## Acceptance criteria
+## Money
 
-- Registration works with validation.
-- Login returns a usable JWT.
-- A protected route or screen shows the welcome message using JWT auth.
-- User able to transfer funds
-- Set it up so it can be ran on Docker container with compose for database
+There is one currency. Amounts are integer minor units with two decimal places: 100 minor units equal 1.00. The app shows balances that way. A new wallet starts at 100000 minor units, which is 1000.00.
 
----
+Email comparison is exact, including case. `Ada@example.com` and `ada@example.com` are different accounts.
 
-## Optional bonus
+## Environment variables
 
-- Docker
-- Backend built using Go (or their frameworks)
-- Frontend built using Flutter/React Native
-- Tests (unit or integration)
+| Name | Read by | Default |
+| --- | --- | --- |
+| `JWT_SECRET` | Go API | No default. The process exits when it is empty. |
+| `DATABASE_DSN` | Go API | No default. The process exits when it is empty. Inside Compose the host is `mysql`. Use the same user, password, and database as `MYSQL_USER`, `MYSQL_PASSWORD`, and `MYSQL_DATABASE`. Include `parseTime=true`. |
+| `API_PORT` | Go API | `8080` |
+| `API_BASE_URL` | Flutter | `http://10.0.2.2:8080`, or the value passed with `--dart-define=API_BASE_URL=...` |
+| `MYSQL_ROOT_PASSWORD` | MySQL | No default. Root password for the MySQL service. |
+| `MYSQL_DATABASE` | MySQL | No default. Database created on first init. |
+| `MYSQL_USER` | MySQL | No default. Application user created on first init. |
+| `MYSQL_PASSWORD` | MySQL | No default. Password for `MYSQL_USER`. |
 
-This keeps the scope tight: just registration, login, and a protected “Hello [email]” flow.
+## HTTP
+
+| Method and path | Auth | Success |
+| --- | --- | --- |
+| `POST /register` | no | `201` JSON `{ "id", "email" }` |
+| `POST /login` | no | `200` JSON `{ "token" }` |
+| `GET /me` | bearer | `200` text `Hello <email>, welcome back` |
+| `GET /wallet` | bearer | `200` JSON `{ "balance", "transfers" }` |
+| `POST /transfers` | bearer | `200` JSON of the transfer |
+
+Login returns an HS256 JWT whose `sub` is the user id and whose `email` is the account email. The token expires 24 hours after it is issued. The session ends after 15 minutes without a successful login or a later successful authenticated request. Wallet reads and successful transfers count. A failed or timed-out call does not. The signed-in screen shows `Hello <email>, welcome back`. On resume, 15 idle minutes clears that screen even when the API cannot be reached. `POST /transfers` takes `transferId`, `recipient`, `amount`, and `notes`. Repeating the same transfer id with the same recipient, amount, and notes returns the original transfer and does not move money again. The app retries a failed transfer with that same id.

@@ -1,0 +1,1318 @@
+{
+  "info": {
+    "name": "Auth Wallet API",
+    "description": "Manual checks for the Go auth and wallet API.\n\nStart the stack with `docker compose up --build`. The API listens on http://localhost:8080.\n\nRun this collection in order with the Postman Collection Runner. The first request mints a new sender email, recipient email, and transfer id, so a second run does not collide with accounts already stored in MySQL.\n\nAmounts are integer minor units. 100 minor units equal 1.00. A new wallet starts at 100000 (1000.00).\n\nEmail match is exact, including case. The bearer token is an HS256 JWT. A successful login or a later successful authenticated request keeps the session alive. After 15 minutes without one, protected routes return 401.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080" },
+    { "key": "senderEmail", "value": "" },
+    { "key": "senderPassword", "value": "s3cret" },
+    { "key": "recipientEmail", "value": "" },
+    { "key": "recipientPassword", "value": "s3cret" },
+    { "key": "senderId", "value": "" },
+    { "key": "recipientId", "value": "" },
+    { "key": "senderToken", "value": "" },
+    { "key": "recipientToken", "value": "" },
+    { "key": "transferId", "value": "" },
+    { "key": "runId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "01 Happy path",
+      "description": "Registers two accounts, logs in, reads the welcome sentence and opening balances, sends 2500 minor units, then repeats the same transfer id.",
+      "item": [
+        {
+          "name": "Register sender",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const runId = Date.now().toString(36);",
+                  "pm.collectionVariables.set('runId', runId);",
+                  "pm.collectionVariables.set('senderEmail', 'ada.' + runId + '@example.com');",
+                  "pm.collectionVariables.set('recipientEmail', 'bob.' + runId + '@example.com');",
+                  "pm.collectionVariables.set('senderPassword', 's3cret');",
+                  "pm.collectionVariables.set('recipientPassword', 's3cret');",
+                  "pm.collectionVariables.set('transferId', 't-' + runId);",
+                  "pm.collectionVariables.set('senderToken', '');",
+                  "pm.collectionVariables.set('recipientToken', '');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('201 with id and email and no password', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "    pm.expect(body.id).to.be.a('string').and.not.empty;",
+                  "    pm.expect(body.email).to.eql(pm.collectionVariables.get('senderEmail'));",
+                  "    pm.expect(body).to.not.have.property('password');",
+                  "});",
+                  "pm.collectionVariables.set('senderId', body.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{senderEmail}}\",\n  \"password\": \"{{senderPassword}}\",\n  \"confirmPassword\": \"{{senderPassword}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/register",
+            "description": "Creates the sender and a wallet of 100000 minor units."
+          }
+        },
+        {
+          "name": "Register recipient",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('201 with id and email and no password', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "    pm.expect(body.id).to.be.a('string').and.not.empty;",
+                  "    pm.expect(body.email).to.eql(pm.collectionVariables.get('recipientEmail'));",
+                  "    pm.expect(body).to.not.have.property('password');",
+                  "});",
+                  "pm.collectionVariables.set('recipientId', body.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{recipientEmail}}\",\n  \"password\": \"{{recipientPassword}}\",\n  \"confirmPassword\": \"{{recipientPassword}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/register"
+          }
+        },
+        {
+          "name": "Login sender",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('200 with a token', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(body.token).to.be.a('string').and.not.empty;",
+                  "});",
+                  "pm.collectionVariables.set('senderToken', body.token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{senderEmail}}\",\n  \"password\": \"{{senderPassword}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/login",
+            "description": "Saves the HS256 JWT on the collection variable senderToken. Claims are sub (user id) and email. The token expires 24 hours after issue."
+          }
+        },
+        {
+          "name": "Login recipient",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('200 with a token', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(body.token).to.be.a('string').and.not.empty;",
+                  "});",
+                  "pm.collectionVariables.set('recipientToken', body.token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{recipientEmail}}\",\n  \"password\": \"{{recipientPassword}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/login"
+          }
+        },
+        {
+          "name": "GET /me",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('exact welcome sentence', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.headers.get('Content-Type')).to.include('text/plain');",
+                  "    pm.expect(pm.response.text()).to.eql('Hello ' + pm.collectionVariables.get('senderEmail') + ', welcome back');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{senderToken}}", "type": "string" }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/me",
+            "description": "Body is exactly `Hello <email>, welcome back` with no extra characters."
+          }
+        },
+        {
+          "name": "GET /wallet sender opening",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('opening balance is 100000 and history is empty', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(body.balance).to.eql(100000);",
+                  "    pm.expect(body.transfers).to.eql([]);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{senderToken}}", "type": "string" }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/wallet"
+          }
+        },
+        {
+          "name": "GET /wallet recipient opening",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('opening balance is 100000 and history is empty', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(body.balance).to.eql(100000);",
+                  "    pm.expect(body.transfers).to.eql([]);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{recipientToken}}", "type": "string" }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/wallet"
+          }
+        },
+        {
+          "name": "POST /transfers",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('transfer of 2500', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(body.transferId).to.eql(pm.collectionVariables.get('transferId'));",
+                  "    pm.expect(body.recipient).to.eql(pm.collectionVariables.get('recipientEmail'));",
+                  "    pm.expect(body.amount).to.eql(2500);",
+                  "    pm.expect(body.notes).to.eql('lunch');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{senderToken}}", "type": "string" }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"transferId\": \"{{transferId}}\",\n  \"recipient\": \"{{recipientEmail}}\",\n  \"amount\": 2500,\n  \"notes\": \"lunch\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/transfers",
+            "description": "2500 minor units is 25.00. The caller chooses transferId."
+          }
+        },
+        {
+          "name": "GET /wallet sender after transfer",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('sender balance is 97500 with one sent row', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(body.balance).to.eql(97500);",
+                  "    pm.expect(body.transfers).to.have.lengthOf(1);",
+                  "    pm.expect(body.transfers[0].direction).to.eql('sent');",
+                  "    pm.expect(body.transfers[0].counterparty).to.eql(pm.collectionVariables.get('recipientEmail'));",
+                  "    pm.expect(body.transfers[0].amount).to.eql(2500);",
+                  "    pm.expect(body.transfers[0].notes).to.eql('lunch');",
+                  "    pm.expect(body.transfers[0].transferId).to.eql(pm.collectionVariables.get('transferId'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{senderToken}}", "type": "string" }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/wallet"
+          }
+        },
+        {
+          "name": "GET /wallet recipient after transfer",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('recipient balance is 102500 with one received row', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(body.balance).to.eql(102500);",
+                  "    pm.expect(body.transfers).to.have.lengthOf(1);",
+                  "    pm.expect(body.transfers[0].direction).to.eql('received');",
+                  "    pm.expect(body.transfers[0].counterparty).to.eql(pm.collectionVariables.get('senderEmail'));",
+                  "    pm.expect(body.transfers[0].amount).to.eql(2500);",
+                  "    pm.expect(body.transfers[0].notes).to.eql('lunch');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{recipientToken}}", "type": "string" }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/wallet"
+          }
+        },
+        {
+          "name": "POST /transfers replay same id",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('same payload returns the original transfer', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(body.transferId).to.eql(pm.collectionVariables.get('transferId'));",
+                  "    pm.expect(body.recipient).to.eql(pm.collectionVariables.get('recipientEmail'));",
+                  "    pm.expect(body.amount).to.eql(2500);",
+                  "    pm.expect(body.notes).to.eql('lunch');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{senderToken}}", "type": "string" }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"transferId\": \"{{transferId}}\",\n  \"recipient\": \"{{recipientEmail}}\",\n  \"amount\": 2500,\n  \"notes\": \"lunch\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/transfers",
+            "description": "Repeating the sender's transfer id with the same recipient, amount, and notes does not move money again."
+          }
+        },
+        {
+          "name": "GET /wallet sender after replay",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('balance and history are unchanged', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(body.balance).to.eql(97500);",
+                  "    pm.expect(body.transfers).to.have.lengthOf(1);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{senderToken}}", "type": "string" }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/wallet"
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 Registration errors",
+      "description": "Field checks return 400 with { \"error\" }. A second registration of the sender email returns 409. A different letter case is a different account.",
+      "item": [
+        {
+          "name": "Missing email",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 email is required', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "    pm.expect(pm.response.json().error).to.eql('email is required');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"password\": \"s3cret\",\n  \"confirmPassword\": \"s3cret\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/register",
+            "description": "An absent or null email is missing. An empty string is present and fails as an invalid address."
+          }
+        },
+        {
+          "name": "Missing password",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 password is required', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "    pm.expect(pm.response.json().error).to.eql('password is required');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"pat@example.com\",\n  \"confirmPassword\": \"s3cret\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/register"
+          }
+        },
+        {
+          "name": "Missing confirmPassword",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 confirmPassword is required', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "    pm.expect(pm.response.json().error).to.eql('confirmPassword is required');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"pat@example.com\",\n  \"password\": \"s3cret\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/register"
+          }
+        },
+        {
+          "name": "Invalid email",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 email is not a valid address', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "    pm.expect(pm.response.json().error).to.eql('email is not a valid address');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"not-an-email\",\n  \"password\": \"s3cret\",\n  \"confirmPassword\": \"s3cret\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/register"
+          }
+        },
+        {
+          "name": "Empty password",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 password must be non-empty', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "    pm.expect(pm.response.json().error).to.eql('password must be non-empty');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"pat@example.com\",\n  \"password\": \"\",\n  \"confirmPassword\": \"\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/register",
+            "description": "An empty password is rejected before the confirmation is compared."
+          }
+        },
+        {
+          "name": "Password mismatch",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 confirmPassword does not match password', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "    pm.expect(pm.response.json().error).to.eql('confirmPassword does not match password');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"pat@example.com\",\n  \"password\": \"s3cret\",\n  \"confirmPassword\": \"other\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/register"
+          }
+        },
+        {
+          "name": "Duplicate email",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('409 email is already registered', function () {",
+                  "    pm.response.to.have.status(409);",
+                  "    pm.expect(pm.response.json().error).to.eql('email is already registered');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{senderEmail}}\",\n  \"password\": \"{{senderPassword}}\",\n  \"confirmPassword\": \"{{senderPassword}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/register",
+            "description": "Uses the sender created in 01 Happy path. The MySQL unique key rejects the duplicate."
+          }
+        },
+        {
+          "name": "Different email case is a new account",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const email = pm.collectionVariables.get('senderEmail') || '';",
+                  "const at = email.indexOf('@');",
+                  "const local = at === -1 ? email : email.slice(0, at);",
+                  "const domain = at === -1 ? 'example.com' : email.slice(at + 1);",
+                  "const cased = (local.charAt(0).toUpperCase() + local.slice(1)) + '@' + domain;",
+                  "pm.collectionVariables.set('casedEmail', cased);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('201 for a different case', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "    pm.expect(body.email).to.eql(pm.collectionVariables.get('casedEmail'));",
+                  "    pm.expect(body.email).to.not.eql(pm.collectionVariables.get('senderEmail'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{casedEmail}}\",\n  \"password\": \"{{senderPassword}}\",\n  \"confirmPassword\": \"{{senderPassword}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/register",
+            "description": "Ada...@example.com is stored separately from ada...@example.com."
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 Login errors",
+      "item": [
+        {
+          "name": "Wrong password",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401 invalid credentials', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "    pm.expect(pm.response.json().error).to.eql('invalid credentials');",
+                  "    pm.expect(pm.response.json()).to.not.have.property('token');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{senderEmail}}\",\n  \"password\": \"wrong-password\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/login"
+          }
+        },
+        {
+          "name": "Unknown email",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401 invalid credentials', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "    pm.expect(pm.response.json().error).to.eql('invalid credentials');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"nobody.{{runId}}@example.com\",\n  \"password\": \"s3cret\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/login"
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 Session",
+      "description": "A missing or invalid bearer token returns 401. Idle logout after 15 minutes is covered by the Go tests with a fake clock; this folder checks the token gate a caller can hit immediately.",
+      "item": [
+        {
+          "name": "GET /me without a token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401 unauthorized', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "    pm.expect(pm.response.json().error).to.eql('unauthorized');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/me"
+          }
+        },
+        {
+          "name": "GET /me with a bad token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401 unauthorized', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "    pm.expect(pm.response.json().error).to.eql('unauthorized');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "not-a-jwt", "type": "string" }
+              ]
+            },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/me"
+          }
+        },
+        {
+          "name": "GET /wallet without a token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401 unauthorized', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "    pm.expect(pm.response.json().error).to.eql('unauthorized');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/wallet"
+          }
+        }
+      ]
+    },
+    {
+      "name": "05 Transfer errors",
+      "description": "Uses the sender token from 01 Happy path. Failed transfers do not move money. Empty notes are allowed. Notes longer than 200 characters, a non-positive amount, an unknown recipient, a self-transfer, insufficient funds, and a reused transfer id with a different amount, recipient, or notes are rejected.",
+      "item": [
+        {
+          "name": "Empty notes",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('200 with empty notes', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(body.notes).to.eql('');",
+                  "    pm.expect(body.amount).to.eql(100);",
+                  "    pm.expect(body.recipient).to.eql(pm.collectionVariables.get('recipientEmail'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{senderToken}}", "type": "string" }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"transferId\": \"{{transferId}}-empty\",\n  \"recipient\": \"{{recipientEmail}}\",\n  \"amount\": 100,\n  \"notes\": \"\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/transfers"
+          }
+        },
+        {
+          "name": "Notes of 201 characters",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('longNotes', 'n'.repeat(201));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 notes must be at most 200 characters', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "    pm.expect(pm.response.json().error).to.eql('notes must be at most 200 characters');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{senderToken}}", "type": "string" }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"transferId\": \"{{transferId}}-long\",\n  \"recipient\": \"{{recipientEmail}}\",\n  \"amount\": 100,\n  \"notes\": \"{{longNotes}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/transfers"
+          }
+        },
+        {
+          "name": "Zero amount",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 amount must be a positive integer', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "    pm.expect(pm.response.json().error).to.eql('amount must be a positive integer');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{senderToken}}", "type": "string" }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"transferId\": \"{{transferId}}-zero\",\n  \"recipient\": \"{{recipientEmail}}\",\n  \"amount\": 0,\n  \"notes\": \"\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/transfers"
+          }
+        },
+        {
+          "name": "Negative amount",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 amount must be a positive integer', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "    pm.expect(pm.response.json().error).to.eql('amount must be a positive integer');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{senderToken}}", "type": "string" }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"transferId\": \"{{transferId}}-neg\",\n  \"recipient\": \"{{recipientEmail}}\",\n  \"amount\": -1,\n  \"notes\": \"\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/transfers"
+          }
+        },
+        {
+          "name": "Non-integer amount",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 amount must be an integer', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "    pm.expect(pm.response.json().error).to.eql('amount must be an integer');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{senderToken}}", "type": "string" }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"transferId\": \"{{transferId}}-frac\",\n  \"recipient\": \"{{recipientEmail}}\",\n  \"amount\": 10.5,\n  \"notes\": \"\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/transfers"
+          }
+        },
+        {
+          "name": "Missing transfer fields",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 required fields', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "    pm.expect(pm.response.json().error).to.eql('transferId, recipient, and amount are required');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{senderToken}}", "type": "string" }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"notes\": \"lunch\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/transfers"
+          }
+        },
+        {
+          "name": "Unknown recipient",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('404 recipient not found', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "    pm.expect(pm.response.json().error).to.eql('recipient not found');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{senderToken}}", "type": "string" }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"transferId\": \"{{transferId}}-missing\",\n  \"recipient\": \"ghost.{{runId}}@example.com\",\n  \"amount\": 100,\n  \"notes\": \"\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/transfers"
+          }
+        },
+        {
+          "name": "Self-transfer",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('400 cannot transfer to self', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "    pm.expect(pm.response.json().error).to.eql('cannot transfer to self');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{senderToken}}", "type": "string" }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"transferId\": \"{{transferId}}-self\",\n  \"recipient\": \"{{senderEmail}}\",\n  \"amount\": 100,\n  \"notes\": \"\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/transfers"
+          }
+        },
+        {
+          "name": "Insufficient funds",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('409 insufficient funds', function () {",
+                  "    pm.response.to.have.status(409);",
+                  "    pm.expect(pm.response.json().error).to.eql('insufficient funds');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{senderToken}}", "type": "string" }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"transferId\": \"{{transferId}}-over\",\n  \"recipient\": \"{{recipientEmail}}\",\n  \"amount\": 1000000,\n  \"notes\": \"\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/transfers",
+            "description": "1000000 minor units is above the sender balance."
+          }
+        },
+        {
+          "name": "Same transfer id with a different amount",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('409 transfer id reused with a different payload', function () {",
+                  "    pm.response.to.have.status(409);",
+                  "    pm.expect(pm.response.json().error).to.eql('transfer id reused with a different payload');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{senderToken}}", "type": "string" }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"transferId\": \"{{transferId}}\",\n  \"recipient\": \"{{recipientEmail}}\",\n  \"amount\": 1,\n  \"notes\": \"lunch\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/transfers",
+            "description": "Reuses the transfer id from the happy-path lunch transfer, with a different amount."
+          }
+        },
+        {
+          "name": "Same transfer id with a different recipient",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('409 transfer id reused with a different payload', function () {",
+                  "    pm.response.to.have.status(409);",
+                  "    pm.expect(pm.response.json().error).to.eql('transfer id reused with a different payload');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{senderToken}}", "type": "string" }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"transferId\": \"{{transferId}}\",\n  \"recipient\": \"other.{{runId}}@example.com\",\n  \"amount\": 2500,\n  \"notes\": \"lunch\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/transfers",
+            "description": "Reuses the happy-path transfer id with a different recipient. The original transfer stays in place."
+          }
+        },
+        {
+          "name": "Same transfer id with different notes",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('409 transfer id reused with a different payload', function () {",
+                  "    pm.response.to.have.status(409);",
+                  "    pm.expect(pm.response.json().error).to.eql('transfer id reused with a different payload');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                { "key": "token", "value": "{{senderToken}}", "type": "string" }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"transferId\": \"{{transferId}}\",\n  \"recipient\": \"{{recipientEmail}}\",\n  \"amount\": 2500,\n  \"notes\": \"dinner\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/transfers",
+            "description": "Reuses the happy-path transfer id with different notes. The original transfer stays in place."
+          }
+        },
+        {
+          "name": "POST /transfers without a token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('401 unauthorized', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "    pm.expect(pm.response.json().error).to.eql('unauthorized');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"transferId\": \"{{transferId}}-anon\",\n  \"recipient\": \"{{recipientEmail}}\",\n  \"amount\": 100,\n  \"notes\": \"\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{baseUrl}}/transfers"
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -10,15 +10,18 @@ context: |
   and Docker Compose runs a database.
   This context wins where the readme's closing summary describes a smaller product.
   Backend is Go. Frontend is Flutter with Dart. The Flutter SDK is the toolchain for run, test, and build.
-  Docker Compose runs the Go API and Postgres. The Flutter app runs on a device or emulator and calls the Go API.
+  Docker Compose runs the Go API and MySQL 8. The Flutter app runs on a device or emulator and calls the Go API.
   The API base URL is supplied to the Flutter app through its configuration.
   Android is the documented run path. The README explains how that device reaches the Compose API.
-  Postgres is the store for users, wallets, and transfers. A volume keeps the database across restarts.
+  MySQL 8 is the store for users, wallets, and transfers. Go uses sqlc as the database library, over database/sql and go-sql-driver/mysql.
+  Checked-in SQL is api/db/schema.sql and api/db/query.sql. api/sqlc.yaml sets engine mysql and generates the committed package api/internal/db. Handlers do not embed SQL.
+  Compose service mysql uses image mysql:8. Volume mysql-data keeps the database across restarts. Compose applies api/db/schema.sql when that volume is first created, and the API starts only after MySQL is healthy.
+  The API reads DATABASE_DSN. Inside Compose the host is mysql and the DSN includes parseTime=true. MySQL reads MYSQL_ROOT_PASSWORD, MYSQL_DATABASE, MYSQL_USER, and MYSQL_PASSWORD.
   The user is on a bad link. Calls use finite timeouts. A lost or failed response is shown as a failure.
   The client retries a transfer by repeating the same transfer id.
   Registration validation is only: email, password, and confirmPassword are required;
   email is a valid address; password is non-empty; confirmPassword matches password;
-  a duplicate email is rejected.
+  a duplicate email is rejected by a MySQL unique key.
   Registration creates the user and a wallet in one database transaction.
   The new wallet starts at 1000.00, stored as 100000 minor units.
   Money is one currency. Amounts are integer minor units. The UI shows two decimal places.
@@ -43,18 +46,18 @@ context: |
   a successful transfer that changes both balances, insufficient funds, an unknown recipient, a self-transfer,
   and an idempotent retry.
   A Flutter widget test covers the exact welcome sentence.
-  Out of scope: a TypeScript or C# backend, a React or React Native frontend, a Node npm pnpm or yarn toolchain, Bun,
+  Out of scope: Postgres, a TypeScript or C# backend, a React or React Native frontend, a Node npm pnpm or yarn toolchain, Bun,
   OAuth, MFA, email verification, password reset, profile editing, roles, deposits, withdrawals,
   other currencies, payment gateways, and an offline queue that applies transfers later.
   Planning artifacts describe the finished app as a greenfield build.
   When those artifacts or the implemented app are revised, rewrite the affected plan in place as the complete target and leave every task unchecked.
-  The next apply creates the Go API, the Flutter app, Postgres, and Compose again from those artifacts.
+  The next apply creates the Go API, the Flutter app, MySQL 8 through sqlc, and Compose again from those artifacts.
   Apply replaces app code that disagrees with the artifacts. Apply leaves openspec/ and this config in place.
 
 rules:
   proposal:
     - Keep scope to user-registration, jwt-session, and wallet
-    - Include the Go API, the Flutter screen, Compose with Postgres, idle logout, the exact welcome sentence, wallet balance and transfer, and the tests named in context
+    - Include the Go API, the Flutter screen, Compose with MySQL 8, sqlc, idle logout, the exact welcome sentence, wallet balance and transfer, and the tests named in context
     - List the context out-of-scope items as out of scope
     - Write the proposal as the full greenfield target
     - On revision, replace it in place so it still describes the whole system
@@ -68,15 +71,16 @@ rules:
   design:
     - Choose one server-enforced idle mechanism and record how an active user stays signed in
     - Name how the Flutter screen hears about idle expiry and clears the session, including when the app resumes and when the API cannot be reached
-    - Name the environment variables and how Compose supplies them to the Go API and Postgres, and how the Flutter app receives the API base URL
-    - Record users, wallets, and transfers in Postgres, integer minor units, and the single transaction that checks the balance, debits, and credits
+    - Name the environment variables and how Compose supplies them to the Go API and MySQL 8, including DATABASE_DSN and MYSQL_ROOT_PASSWORD, MYSQL_DATABASE, MYSQL_USER, and MYSQL_PASSWORD, and how the Flutter app receives the API base URL
+    - Record users, wallets, and transfers in MySQL 8 through sqlc, using api/db/schema.sql, api/db/query.sql, api/sqlc.yaml, and the committed package api/internal/db, integer minor units, and the single transaction that checks the balance, debits, and credits
+    - Record Compose service mysql on image mysql:8, volume mysql-data, schema applied on first init, and the API starting only after MySQL is healthy
     - Record finite timeouts, visible failure, and transfer-id idempotency
     - Repeat the context non-goals
     - On revision, update the decisions in place so one design can rebuild the whole app
   tasks:
     - Write every task as a from-scratch creation step that names the files and end state to produce
     - Do not write tasks as patches against existing app code
-    - Include the Go service, the Flutter app, Compose with Postgres, an env example, README run instructions for Compose and the Android run path, Go tests with a fake clock and the wallet cases, and a Flutter widget test for the welcome sentence
+    - Include the Go service, the Flutter app, Compose with MySQL 8, sqlc generation of the committed package api/internal/db, an env example, README run instructions for Compose and the Android run path, Go tests with a fake clock and the wallet cases, and a Flutter widget test for the welcome sentence
     - Map task groups to user-registration, jwt-session, and wallet
     - Leave out tasks for out-of-scope features
     - When the plan or the implemented app is revised, replace the task list with the full from-scratch plan and leave every task unchecked
@@ -85,7 +89,7 @@ operations:
   apply:
     guidance:
       - When the app code or the planning artifacts were revised, regenerate tasks.md as an unchecked from-scratch plan derived from the current proposal, specs, and design, then implement that plan
-      - Create the Go API, the Flutter app, Postgres, and Compose to match the artifacts
+      - Create the Go API, the Flutter app, MySQL 8 through sqlc, and Compose to match the artifacts
       - Replace drifted app files that disagree with the artifacts
       - Leave openspec/ and this config in place
       - Do not paste this config into planning artifacts or implementation files
@@ -95,4 +99,4 @@ operations:
       - Make the README list the environment variables the app actually reads
   archive:
     guidance:
-      - Archive only after registration validation, a usable JWT, the exact welcome sentence on the Flutter screen, idle logout, a transfer that changes both balances, and Compose running Postgres have been demonstrated
+      - Archive only after registration validation, a usable JWT, the exact welcome sentence on the Flutter screen, idle logout, a transfer that changes both balances, and Compose running MySQL 8 have been demonstrated
